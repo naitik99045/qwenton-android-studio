@@ -1,0 +1,144 @@
+================================================================================
+PRODUCT REQUIREMENTS DOCUMENT (PRD)
+Project Name: Qwenton-Studio-apex
+Platform: Android (ARM64 / arm64-v8a, Min SDK 29, Target SDK 35)
+Architecture: Jetpack Compose UI + Embedded PTY Terminal + Native jniLibs Engine
+Version: 1.0.0-APEX
+================================================================================
+
+1. EXECUTIVE SUMMARY & PRODUCT VISION
+--------------------------------------------------------------------------------
+Qwenton-Studio-apex is an Android-native local AI model & autonomous agent host
+modeled after LM Studio. It enables users to browse, download, install, and
+execute quantized GGUF Large Language Models (LLMs) and custom Python/JSON AI
+Agents from Hugging Face and free AI providers directly on an Android smartphone.
+
+Crucially, Qwenton-Studio-apex eliminates all manual terminal typing. Every installation,
+dependency setup, model load, OpenAI server launch, and port-forwarding tunnel is
+triggered by 1-click UI buttons that automatically inject shell pipelines into an
+embedded Linux terminal (PTY), parse the live terminal output in real time, and
+expose a public HTTPS OpenAI-compatible `base_url` and custom `api_key` (`sk-qwenton-apex-*`)
+usable from any external SDK, web app, or desktop IDE.
+
+2. CORE ARCHITECTURAL PILLARS (WHY THIS OPTION IS CHOSEN)
+--------------------------------------------------------------------------------
+2.1 Android 10+ W^X Security Bypass via `jniLibs`:
+    Android blocks executing binaries downloaded into writable app directories.
+    Qwenton-Studio-apex packages three core ARM64 binaries disguised as shared
+    libraries inside `app/src/main/jniLibs/arm64-v8a/`:
+    - `libllama_server.so`: Pre-compiled `llama.cpp` HTTP OpenAI server with
+      ARM NEON, dotprod, FP16, and Vulkan GPU offloading enabled.
+    - `libcloudflared.so`: Pre-compiled Cloudflare Quick Tunnel binary to bypass
+      mobile carrier CGNAT and provide a global HTTPS `base_url`.
+    - `libproot.so`: Pre-compiled PRoot binary allowing rootless execution of an
+      Alpine/Ubuntu ARM64 Linux rootfs for Python/pip agent dependencies.
+
+2.2 Bi-Directional UI <-> Terminal Bridge (`QwentonTerminalBridge`):
+    - Downward Flow (UI -> PTY): Tapping any UI button ("Initialize Engine",
+      "Install Model", "Install Agent Tools", "Start Server") dispatches a
+      deterministic shell script into `TerminalSession.write()`.
+    - Upward Flow (PTY -> UI): A real-time transcript watcher scans `stdout` via
+      Regex to extract download percentages (`%`), memory usage, token speed (`t/s`),
+      readiness tokens (`[QWENTON_READY]`), and the generated public Cloudflare
+      URL (`https://*.trycloudflare.com`), updating Jetpack Compose states automatically.
+
+2.3 Pre-Flight Memory & Hardware Guardrails:
+    Before spawning `libllama_server.so`, the app inspects Android's
+    `ActivityManager.MemoryInfo.availMem` and compares it against the GGUF file
+    size. If the model exceeds 65% of available physical RAM, the orchestrator
+    automatically adjusts `--ctx-size` (`-c`), enables `--load-mode mmap`, or
+    warns the user before an Out-Of-Memory (OOM) crash can occur.
+
+3. VISUAL DESIGN & UI/UX SPECIFICATIONS
+--------------------------------------------------------------------------------
+3.1 Aesthetic Direction:
+    - Theme Palette: Deep Obsidian Slate background (`#0B0E14`), Dark Cyan surface
+      accents (`#0F293A` / `#00BCD4`), Soft Pink interactive highlights (`#F48FB1`),
+      Warm Cream typography (`#FFF8E7`), and Metallic Gold status badges (`#FFD54F`).
+    - Surface Styling: Glassmorphic cards with translucent borders, subtle blur
+      overlays, and animated status indicators.
+
+3.2 Core Screens & Components:
+    1. Studio Dashboard (Home):
+       - Hardware Telemetry Header: Live RAM usage bar, CPU/GPU backend indicator,
+         and active Foreground Service status badge.
+       - Active Endpoint Card: Displays Local LAN URL (`http://192.168.x.x:8080/v1`),
+         Global Port-Forwarded Base URL (`https://*.trycloudflare.com/v1`), and
+         Custom API Key (`sk-qwenton-apex-...`) with 1-tap Copy and Regenerate buttons.
+       - 1-Click Server Control Deck: Model/Agent selector dropdown, Context Length
+         slider (2048 to 16384), GPU Layers (`-ngl`) slider, and "Start / Stop Server" CTA.
+    2. Hugging Face & Agent Hub:
+       - Search & Filter bar querying Hugging Face REST API (`?filter=gguf`).
+       - Recommended Mobile Quantizations badge (`Q4_K_M`, `Q4_0`, `IQ4_XS`).
+       - Custom Agent Store: Supports importing or downloading `agent.json` manifests
+         that bundle a base GGUF model link, system prompt, sampling presets, and
+         required Python `pip` tools.
+       - 1-Tap "Auto-Install" button that triggers the terminal downloader + dependency
+         installer with a visual progress bar.
+    3. Local Playground (Chat & Tool Tester):
+       - Built-in chat client connected directly to `http://127.0.0.1:8080/v1/chat/completions`
+         to test installed models and agents with streaming Markdown and code rendering.
+    4. Collapsible Live Terminal Sheet (Bottom Drawer):
+       - Persistent mini-status bar at the bottom of the screen showing the latest
+         shell output line and token speed.
+       - Swiping up reveals the full interactive Termux `TerminalView` bound to the
+         active `TerminalSession`, allowing users to inspect live execution logs or
+         run manual commands if desired.
+
+4. FUNCTIONAL REQUIREMENTS
+--------------------------------------------------------------------------------
+FR-01: 1-Click Bootstrap Initialization
+       On first launch, clicking "Initialize Studio" extracts the minimal ARM64
+       Linux rootfs (`alpine-minirootfs-aarch64.tar.gz`) into `filesDir/rootfs`,
+       links `libproot.so`, `libllama_server.so`, and `libcloudflared.so`, creates
+       `/models` and `/agents` directories, and emits `[QWENTON_INIT_COMPLETE]`.
+
+FR-02: Automated GGUF & Agent Installation via Terminal
+       Clicking "Install" on any Hugging Face model or Agent manifest executes a
+       resumable `curl -L -C - --progress-bar` command inside the PTY session,
+       verifies file integrity, runs `pip install` inside PRoot if the agent
+       requires Python tools, and registers the model in the local catalog.
+
+FR-03: OpenAI-Compatible Local & Port-Forwarded Server
+       Clicking "Start Server" launches `libllama_server.so` bound to `0.0.0.0:8080`
+       with `--api-key <generated_key>`, `--load-mode mmap`, and `--metrics`.
+       Immediately after port 8080 is listening, the orchestrator spawns
+       `libcloudflared.so tunnel --url http://127.0.0.1:8080` and captures the
+       public HTTPS URL into the UI.
+
+FR-04: Android Foreground Service & Survival Lifecycle
+       The PTY session, `llama-server`, and `cloudflared` tunnel must run inside
+       `QwentonServerService` (Android Foreground Service with `PARTIAL_WAKE_LOCK`
+       and `WIFI_MODE_FULL_LOW_LATENCY`) with a persistent notification containing
+       live status and a "Stop Server" action.
+
+5. DIRECTORY & PACKAGE STRUCTURE
+--------------------------------------------------------------------------------
+com.qwenton.studio.apex/
+├── data/
+│   ├── api/            # HuggingFaceApiService (Retrofit/OkHttp)
+│   ├── local/          # EncryptedSharedPreferences (API Keys), ModelCatalogRepository
+│   └── model/          # GgufModelInfo, AgentManifest, ServerConfig, TelemetryState
+├── service/
+│   ├── QwentonServerService.kt    # Foreground Service holding WakeLock + PTY + Server
+│   └── RamGuardrailValidator.kt   # Pre-flight GGUF header & Android availMem checker
+├── terminal/
+│   ├── QwentonTerminalBridge.kt   # Singleton PTY manager, script injector, Regex stdout parser
+│   └── ShellScriptFactory.kt      # Deterministic shell command builders for init/download/serve
+└── ui/
+    ├── theme/          # Obsidian Slate, Dark Cyan, Soft Pink, Cream, Gold Glassmorphic theme
+    ├── dashboard/      # StudioDashboardScreen, EndpointCard, TelemetryHeader
+    ├── hub/            # HuggingFaceHubScreen, AgentInstallerCard
+    ├── playground/     # LocalChatPlaygroundScreen
+    └── components/     # CollapsibleTerminalDrawer (AndroidView wrapping Termux TerminalView)
+
+6. ACCEPTANCE CRITERIA & VERIFICATION
+--------------------------------------------------------------------------------
+1. Zero Manual Commands Required: A user can install the APK, tap "Initialize",
+   select a GGUF model from the Hub, tap "Install", and tap "Start Server" without
+   ever opening the keyboard in the terminal.
+2. Zero Permission Denied Errors: All native binaries execute from `nativeLibraryDir`
+   on Android 10 through Android 15+ without `error=13 (Permission denied)`.
+3. External SDK Compatibility: Running the standard OpenAI Python or JS SDK from an
+   external laptop using the displayed `https://*.trycloudflare.com/v1` Base URL and
+   `sk-qwenton-apex-*` API key streams completions from the Android phone cleanly.

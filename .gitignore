@@ -1,0 +1,58 @@
+# ==============================================================================
+# Qwenton Studio Apex — Git Ignore Configuration
+# ==============================================================================
+
+# Built artifacts & packaging
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+bin/
+gen/
+out/
+build/
+app/build/
+.gradle/
+
+# Android Studio & IntelliJ Project files
+.idea/
+*.iml
+*.iws
+*.ipr
+.shelf/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Local device & SDK properties (MUST NEVER BE COMMITTED)
+local.properties
+
+# Log files
+*.log
+logs/
+
+# Android Keystores & Signing Keys
+*.jks
+*.keystore
+*.key
+
+# Native binary weights & precompiled shared objects
+# (Run scripts/fetch_native_binaries.ps1 or .sh to populate jniLibs locally)
+app/src/main/jniLibs/arm64-v8a/*.so
+!app/src/main/jniLibs/arm64-v8a/.gitkeep
+
+# Large GGUF model weights & rootfs archives
+*.gguf
+*.bin
+*.tar.gz
+*.part
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

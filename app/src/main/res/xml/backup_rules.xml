@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="sharedpref" path="qwenton_secure_prefs.xml" />
+    <exclude domain="sharedpref" path="qwenton_secure_prefs_fallback.xml" />
+    <exclude domain="file" path="models" />
+    <exclude domain="file" path="agents" />
+    <exclude domain="file" path="rootfs" />
+</full-backup-content>

@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">Qwenton Studio</string>
+    <string name="server_running_notification_title">Qwenton AI Server Active</string>
+    <string name="server_running_notification_text">Hosting local GGUF model with Cloudflare tunnel</string>
+    <string name="action_stop_server">Stop Server</string>
+</resources>

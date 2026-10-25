@@ -1,0 +1,125 @@
+================================================================================
+MASTER BUILDER PROMPT — QWENTON-STUDIO-APEX (ANDROID)
+Use this prompt in Claude Code, Qwen Code CLI, Antigravity CLI, or Cursor.
+================================================================================
+
+ROLE & OBJECTIVE:
+You are a Principal Android Systems Architect and Native C++/Linux Integration
+Engineer. Your task is to build the complete, production-ready Android application
+"Qwenton-Studio-apex" (package: `com.qwenton.studio.apex`) based strictly on the
+specifications in `prd.txt`.
+
+Qwenton-Studio-apex is an Android replica of LM Studio that combines a modern
+Jetpack Compose UI with an embedded, automated Linux PTY terminal (`TerminalSession`).
+Users interact entirely through 1-click UI buttons, while the application
+automatically executes shell pipelines inside the embedded terminal to install
+dependencies, download Hugging Face `.gguf` models and custom AI agents, run
+`llama-server` (`llama.cpp`), and expose a global port-forwarded HTTPS OpenAI
+`base_url` with custom `api_key` authentication.
+
+CRITICAL ANDROID TECHNICAL CONSTRAINTS (MUST FOLLOW):
+1. Target `arm64-v8a` with `minSdk = 29` and `targetSdk = 35`.
+2. In `AndroidManifest.xml`, set `android:extractNativeLibs="true"` on the
+   `<application>` tag so Android extracts all binaries inside
+   `app/src/main/jniLibs/arm64-v8a/` (`libllama_server.so`, `libcloudflared.so`,
+   `libproot.so`) into `context.applicationInfo.nativeLibraryDir` with executable
+   (`r-x`) permissions. This is mandatory to bypass Android 10+ W^X restrictions.
+3. Include permissions: `INTERNET`, `FOREGROUND_SERVICE`,
+   `FOREGROUND_SERVICE_SPECIAL_USE` (or `DATA_SYNC`), `WAKE_LOCK`,
+   `POST_NOTIFICATIONS`, and `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
+4. Embed the Termux terminal libraries (`com.termux:terminal-view` and
+   `com.termux:terminal-emulator`) and wrap `TerminalView` inside a Jetpack
+   Compose `AndroidView` inside a persistent, swipe-up Bottom Sheet drawer.
+
+AESTHETIC & UI DESIGN REQUIREMENTS:
+Implement a custom Material3 Glassmorphic theme (`ui/theme/`):
+- Background: Deep Obsidian Slate (`#0B0E14`)
+- Cards / Glass Surfaces: Translucent Dark Cyan (`#0F293A` with alpha 0.75) and
+  subtle border strokes (`#00BCD4` with alpha 0.35)
+- Primary Accent: Soft Pink (`#F48FB1`)
+- Secondary / Status Accent: Metallic Gold (`#FFD54F`)
+- Primary Text: Warm Cream (`#FFF8E7`)
+
+STEP-BY-STEP IMPLEMENTATION EXECUTION PLAN:
+Execute and generate the complete source files in the following sequence without
+omitting code or leaving `// TODO` placeholders:
+
+STEP 1: Project Configuration & Gradle Setup
+- Generate `settings.gradle.kts`, root `build.gradle.kts`, and `app/build.gradle.kts`
+  configured with Jetpack Compose (Material3), Coroutines, Serialization, OkHttp,
+  Retrofit, Security-Crypto (`EncryptedSharedPreferences`), and Termux
+  `terminal-emulator` + `terminal-view` dependencies.
+- Generate `AndroidManifest.xml` with `android:extractNativeLibs="true"` and
+  `QwentonServerService` declarations.
+- Create a helper script `scripts/fetch_native_binaries.sh` that automates
+  downloading/preparing the ARM64 binaries into `app/src/main/jniLibs/arm64-v8a/`
+  as `libllama_server.so`, `libcloudflared.so`, and `libproot.so`.
+
+STEP 2: Data Models, Pre-Flight RAM Guardrail & API Key Manager
+- Build `data/model/Models.kt` containing:
+  - `GgufModelInfo` (id, repoId, fileName, sizeBytes, quantType, isInstalled, localPath)
+  - `AgentManifest` (agentId, name, baseModelRepo, ggufFileName, systemPrompt,
+    temperature, contextLength, pipPackages, tools)
+  - `ServerStatus` (STOPPED, STARTING, RUNNING, ERROR)
+- Build `service/RamGuardrailValidator.kt`:
+  - Uses `ActivityManager.MemoryInfo` to read `availMem` and `totalMem`.
+  - Validates whether a selected `.gguf` file fits safely within 65% of available
+    RAM and calculates safe defaults for `--ctx-size` and `--threads`.
+- Build `data/local/ApiKeyManager.kt`:
+  - Generates, stores, and rotates keys formatted as `sk-qwenton-apex-<24-hex-chars>`
+    using `EncryptedSharedPreferences`.
+
+STEP 3: Bi-Directional Terminal Bridge & Automated Shell Orchestrator
+- Build `terminal/ShellScriptFactory.kt` producing deterministic shell commands for:
+  1. `buildInitBootstrapCommand()`: Verifies `nativeLibraryDir` binaries, sets up
+     directories (`/models`, `/agents`, `/rootfs`, `/logs`), and prints
+     `[QWENTON_INIT_COMPLETE]`.
+  2. `buildDownloadModelCommand(url, destPath, pipPackages)`: Runs resumable
+     `curl -L -C - --progress-bar "$url" -o "$destPath"`, runs `libproot.so` pip
+     installs if `pipPackages` is non-empty, and prints `[QWENTON_DOWNLOAD_DONE]`.
+  3. `buildStartServerCommand(modelPath, port, ctxSize, threads, gpuLayers, apiKey, systemPromptFile)`:
+     Starts `$nativeLibDir/libllama_server.so -m "$modelPath" --host 0.0.0.0 --port $port -c $ctxSize -t $threads -ngl $gpuLayers --load-mode mmap --api-key "$apiKey" &`,
+     waits for `127.0.0.1:$port/health` to return HTTP 200, and then executes
+     `$nativeLibDir/libcloudflared.so tunnel --url http://127.0.0.1:$port`.
+  4. `buildStopServerCommand()`: Gracefully kills `libllama_server.so` and
+     `libcloudflared.so` processes and prints `[QWENTON_SERVER_STOPPED]`.
+- Build `terminal/QwentonTerminalBridge.kt`:
+  - Initializes and holds the `TerminalSession` instance.
+  - Exposes `StateFlow` properties for `terminalTranscript`, `latestLogLine`,
+    `isInitialized`, `downloadProgress`, `serverStatus`, `localBaseUrl`,
+    `publicTunnelUrl`, and `tokenSpeed`.
+  - Implements real-time Regex parsing in `onTextChanged()` to extract curl
+    percentages, `https://[a-zA-Z0-9-]+\.trycloudflare\.com` URLs, and status tokens.
+
+STEP 4: Android Foreground Service (`QwentonServerService.kt`)
+- Implement a resilient `Service` that runs in the foreground with a persistent
+  notification displaying the active model and public URL.
+- Acquire and release `PARTIAL_WAKE_LOCK` and `WifiLock` cleanly tied to the
+  server lifecycle.
+
+STEP 5: Hugging Face Hub Client & Local Model Catalog
+- Implement `data/api/HuggingFaceClient.kt` to search Hugging Face GGUF models
+  (`https://huggingface.co/api/models?filter=gguf&search=...`) and inspect repo
+  files to list `.gguf` variants with their exact byte sizes.
+- Provide curated default presets (e.g., `Qwen/Qwen2.5-Coder-3B-Instruct-GGUF`,
+  `bartowski/Llama-3.2-3B-Instruct-GGUF`, `ggml-org/gemma-3-4b-it-GGUF`) for
+  instant 1-tap installation.
+
+STEP 6: Jetpack Compose Studio UI + Collapsible Terminal Drawer
+- Build `MainActivity.kt` and the complete Compose navigation & screen hierarchy:
+  1. `StudioDashboardScreen`: Telemetry cards, Model/Agent picker, 1-Click
+     "Initialize Studio" / "Start Server" / "Stop Server" buttons, and the
+     glassmorphic **Endpoint & API Key Card** with 1-tap Copy buttons for
+     `base_url` and `api_key`.
+  2. `ModelAndAgentHubScreen`: Searchable GGUF & Custom Agent installer with live
+     progress bars driven by `QwentonTerminalBridge.downloadProgress`.
+  3. `PlaygroundScreen`: Streaming OpenAI chat tester connected to the local server.
+  4. `CollapsibleTerminalDrawer`: Bottom sheet embedding Termux `TerminalView`
+     with a status pill header (`● Terminal Ready | Latest stdout line`) and
+     quick-action buttons (`Clear`, `Kill Process`, `Copy Logs`).
+
+CODING STANDARDS:
+- Write complete, compilable Kotlin and XML files—never use placeholders or
+  truncated blocks.
+- Ensure every UI action is 100% button-driven while echoing all underlying commands
+  transparently into the embedded terminal session.

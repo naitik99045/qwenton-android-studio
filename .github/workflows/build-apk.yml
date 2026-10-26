@@ -40,40 +40,19 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
 
       - name: Build Debug APK
-        id: build_step
-        run: |
-          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee gradle-build.log
-        continue-on-error: true
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Locate and Verify APK
         id: locate_apk
         run: |
-          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" 2>/dev/null | head -n 1)
+          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
           if [ -z "$APK_PATH" ]; then
             echo "Error: No APK file was generated!"
-            echo "### ❌ Gradle Build Failure Details" >> $GITHUB_STEP_SUMMARY
-            echo '```text' >> $GITHUB_STEP_SUMMARY
-            tail -n 150 gradle-build.log >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            tail -n 150 gradle-build.log > build-summary.txt
             exit 1
           fi
           echo "Found APK at: $APK_PATH"
           echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
           ls -lh "$APK_PATH"
-
-      - name: Publish Failure Diagnostics to GitHub Release
-        if: failure()
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ci-failure-diagnostics
-          name: "CI Build Failure Diagnostics"
-          body_path: build-summary.txt
-          files: gradle-build.log
-          draft: false
-          prerelease: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
@@ -83,7 +62,7 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
-      - name: Create or Update GitHub Release
+      - name: Publish Debug APK Release
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
@@ -94,8 +73,8 @@ jobs:
             Automated debug APK build from commit `${{ github.sha }}` on branch `${{ github.ref_name }}`.
             
             - **Package Name**: `com.qwenton.studio.apex`
-            - **Target**: Android 10 to Android 15 (API 29-35, ARM64-v8a)
-            - **Installation**: Download `app-debug.apk` directly below to your Android device and tap to install.
+            - **Target Compatibility**: Android 10 to Android 15 (API 29-35, ARM64-v8a)
+            - **Direct Download**: Download `app-debug.apk` directly below to your Android device and tap to install.
           files: ${{ steps.locate_apk.outputs.apk_path }}
           draft: false
           prerelease: false

@@ -27,16 +27,17 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Set up Gradle Cache
+      - name: Set up Gradle Cache & Toolchain
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
 
       - name: Grant Execute Permission to Gradlew
         run: chmod +x gradlew
+
+      - name: Accept Android SDK Licenses
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
@@ -61,10 +62,29 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: v1.0.0-apk
+          name: "Qwenton Studio Apex v1.0.0 Debug APK"
+          body: |
+            ### 🚀 Qwenton Studio Apex Android APK
+            Automated debug APK build from commit `${{ github.sha }}` on branch `${{ github.ref_name }}`.
+            
+            - **Package Name**: `com.qwenton.studio.apex`
+            - **Target**: Android 10 to Android 15 (API 29-35, ARM64-v8a)
+            - **Installation**: Download `app-debug.apk` directly below to your Android device and tap to install.
+          files: ${{ steps.locate_apk.outputs.apk_path }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Summary Report
         run: |
           echo "### 🚀 APK Build Succeeded!" >> $GITHUB_STEP_SUMMARY
           echo "Your Android APK has been compiled and is ready for installation." >> $GITHUB_STEP_SUMMARY
           echo "- **Package Name:** \`com.qwenton.studio.apex\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Target:** Android 10 to Android 15 (ARM64-v8a)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Download Artifact:** Download \`qwenton-studio-apex-debug-apk\` from the Artifacts section above." >> $GITHUB_STEP_SUMMARY
+          echo "- **Direct Download:** Available directly from [Releases](https://github.com/${{ github.repository }}/releases) or the Artifacts section above." >> $GITHUB_STEP_SUMMARY

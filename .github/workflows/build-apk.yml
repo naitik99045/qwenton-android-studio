@@ -53,20 +53,27 @@ jobs:
             echo "Error: No APK file was generated!"
             echo "### ❌ Gradle Build Failure Details" >> $GITHUB_STEP_SUMMARY
             echo '```text' >> $GITHUB_STEP_SUMMARY
-            tail -n 120 gradle-build.log >> $GITHUB_STEP_SUMMARY
+            tail -n 150 gradle-build.log >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-            
-            git config --global user.name "github-actions[bot]"
-            git config --global user.email "github-actions[bot]@users.noreply.github.com"
-            git checkout -B ci-build-log
-            cp gradle-build.log build-failure.log 2>/dev/null || true
-            git add build-failure.log
-            git commit -m "ci: upload build failure log [skip ci]" || true
-            git push -f origin ci-build-log || true
-
+            tail -n 150 gradle-build.log > build-summary.txt
             exit 1
           fi
           echo "Found APK at: $APK_PATH"
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          ls -lh "$APK_PATH"
+
+      - name: Publish Failure Diagnostics to GitHub Release
+        if: failure()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ci-failure-diagnostics
+          name: "CI Build Failure Diagnostics"
+          body_path: build-summary.txt
+          files: gradle-build.log
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
           ls -lh "$APK_PATH"
 

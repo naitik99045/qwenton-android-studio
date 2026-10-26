@@ -40,11 +40,15 @@ fun QwentonStudioTheme(
         SideEffect {
             val window = (view.context as? Activity)?.window
             if (window != null) {
-                window.statusBarColor = ObsidianSlate.toArgb()
-                window.navigationBarColor = ObsidianSlate.toArgb()
-                val controller = WindowCompat.getInsetsController(window, view)
-                controller.isAppearanceLightStatusBars = false
-                controller.isAppearanceLightNavigationBars = false
+                try {
+                    window.statusBarColor = ObsidianSlate.toArgb()
+                    window.navigationBarColor = ObsidianSlate.toArgb()
+                    val controller = WindowCompat.getInsetsController(window, view)
+                    controller.isAppearanceLightStatusBars = false
+                    controller.isAppearanceLightNavigationBars = false
+                } catch (t: Throwable) {
+                    // Safely ignore on Android 15 where edge-to-edge enforces system bar transparency
+                }
             }
         }
     }

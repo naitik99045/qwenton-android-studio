@@ -67,9 +67,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        requestRequiredPermissions()
+        try {
+            requestNotificationPermissionSafely()
+        } catch (t: Throwable) {
+            android.util.Log.w("MainActivity", "Safe permission handling", t)
+        }
 
-        val app = application as QwentonApplication
+        val app = (application as? QwentonApplication) ?: run {
+            android.util.Log.w("MainActivity", "Fallback application context casting")
+            applicationContext as QwentonApplication
+        }
 
         setContent {
             QwentonStudioTheme {
@@ -78,27 +85,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun requestRequiredPermissions() {
+    private fun requestNotificationPermissionSafely() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED
-            ) {
-                requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
-
-        // Check battery optimizations for foreground persistence
-        val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (powerManager?.isIgnoringBatteryOptimizations(packageName) == false) {
-                try {
-                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                        data = Uri.parse("package:$packageName")
-                    }
-                    startActivity(intent)
-                } catch (e: Exception) {
-                    // Fallback to standard app info screen
+            try {
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED
+                ) {
+                    requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
+            } catch (t: Throwable) {
+                android.util.Log.w("MainActivity", "Notification permission launcher warning", t)
             }
         }
     }

@@ -234,33 +234,48 @@ fun CollapsibleTerminalDrawer(
                     }
                 }
 
-                // Native Termux TerminalView or Fallback Text Stream
+                // Native Termux TerminalView or Safe Compose Fallback Stream
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
                         .padding(6.dp)
                 ) {
+                    var nativeViewFailed by remember { mutableStateOf(false) }
                     val session = bridge.getTerminalSession()
-                    if (session != null) {
+
+                    if (session != null && !nativeViewFailed) {
                         AndroidView(
                             factory = { ctx ->
-                                TerminalView(ctx, null).apply {
-                                    setTextSize(26)
-                                    attachSession(session)
+                                try {
+                                    TerminalView(ctx, null).apply {
+                                        setTextSize(26)
+                                        attachSession(session)
+                                    }
+                                } catch (t: Throwable) {
+                                    android.util.Log.w("CollapsibleDrawer", "TerminalView instantiation fallback", t)
+                                    nativeViewFailed = true
+                                    android.widget.TextView(ctx).apply {
+                                        setTextColor(android.graphics.Color.WHITE)
+                                        text = transcript
+                                    }
                                 }
                             },
                             update = { termView ->
-                                if (termView.currentSession != session) {
-                                    termView.attachSession(session)
+                                try {
+                                    if (termView is TerminalView && termView.currentSession != session) {
+                                        termView.attachSession(session)
+                                    }
+                                } catch (t: Throwable) {
+                                    nativeViewFailed = true
                                 }
                             },
                             modifier = Modifier.matchParentSize()
                         )
                     } else {
-                        // Fallback text view when Termux view is not attached
+                        // Resilient scrollable Compose text console
                         Text(
-                            text = transcript.ifEmpty { "Waiting for terminal output...\n" },
+                            text = transcript.ifEmpty { "==> Qwenton Terminal Ready. No output yet.\n" },
                             color = WarmCream,
                             fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace,

@@ -20,6 +20,8 @@ class QwentonTerminalBridge private constructor(private val appContext: Context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var terminalSession: TerminalSession? = null
+    private var nativeProcess: Process? = null
+    private var nativeProcessWriter: java.io.BufferedWriter? = null
 
     // Reactive Compose States
     private val _transcript = MutableStateFlow("")
@@ -56,7 +58,7 @@ class QwentonTerminalBridge private constructor(private val appContext: Context)
     }
 
     /**
-     * Initializes the underlying Termux TerminalSession.
+     * Initializes the underlying Termux TerminalSession or transparently falls back to native Linux shell process.
      */
     fun initializeSession() {
         try {
@@ -81,23 +83,75 @@ class QwentonTerminalBridge private constructor(private val appContext: Context)
                 this
             )
             appendTranscript("==> Qwenton Terminal PTY session created.\n")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize Termux TerminalSession", e)
-            appendTranscript("==> Notice: PTY session initialized with standard shell fallback.\n")
+        } catch (t: Throwable) {
+            // Safely catch UnsatisfiedLinkError, NoClassDefFoundError, or any runtime linkage failure
+            Log.w(TAG, "Termux PTY JNI not available on device (${t.message}), activating Native Linux Shell engine", t)
+            terminalSession = null
+            startNativeShellFallback()
+            appendTranscript("==> Native Android Linux shell engine activated.\n")
+        }
+    }
+
+    private fun startNativeShellFallback() {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val workingDir = appContext.filesDir.absolutePath
+                val nativeLibDir = appContext.applicationInfo.nativeLibraryDir
+                val pb = ProcessBuilder("/system/bin/sh")
+                    .directory(File(workingDir))
+                    .redirectErrorStream(true)
+
+                val env = pb.environment()
+                env["HOME"] = workingDir
+                env["TMPDIR"] = "$workingDir/logs"
+                env["PATH"] = "/system/bin:/system/xbin:$nativeLibDir"
+                env["LD_LIBRARY_PATH"] = nativeLibDir
+
+                val process = pb.start()
+                nativeProcess = process
+                nativeProcessWriter = process.outputStream.bufferedWriter()
+
+                val reader = process.inputStream.bufferedReader()
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    line?.let { outputLine ->
+                        processOutputChunk("$outputLine\n")
+                    }
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "Error in native shell fallback", t)
+            }
         }
     }
 
     fun getTerminalSession(): TerminalSession? = terminalSession
 
     /**
-     * Dispatches a deterministic shell command directly into the PTY session.
+     * Dispatches a deterministic shell command directly into the PTY session or native Linux shell process.
      */
     fun dispatchCommand(command: String) {
         val cleanCmd = command.trim() + "\n"
         terminalSession?.let { session ->
-            session.write(cleanCmd)
-        } ?: run {
-            appendTranscript("==> Session unavailable, unable to dispatch command.\n")
+            try {
+                session.write(cleanCmd)
+                return
+            } catch (t: Throwable) {
+                Log.w(TAG, "Failed writing to TerminalSession, falling back to native shell", t)
+            }
+        }
+
+        // Native Linux shell fallback execution
+        scope.launch(Dispatchers.IO) {
+            try {
+                if (nativeProcessWriter == null || nativeProcess?.isAlive == false) {
+                    startNativeShellFallback()
+                }
+                nativeProcessWriter?.write(cleanCmd)
+                nativeProcessWriter?.flush()
+            } catch (t: Throwable) {
+                Log.e(TAG, "Failed writing to native shell fallback", t)
+                appendTranscript("==> Error executing command: ${t.localizedMessage}\n")
+            }
         }
     }
 

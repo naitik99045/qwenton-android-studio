@@ -21,8 +21,8 @@ class ApiKeyManager(context: Context) {
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
-    } catch (e: Exception) {
-        Log.e(TAG, "Failed to initialize EncryptedSharedPreferences, using fallback storage", e)
+    } catch (t: Throwable) {
+        Log.e(TAG, "Failed to initialize EncryptedSharedPreferences, using fallback storage: ${t.message}", t)
         context.getSharedPreferences("${PREFS_FILENAME}_fallback", Context.MODE_PRIVATE)
     }
 

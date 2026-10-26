@@ -55,6 +55,15 @@ jobs:
             echo '```text' >> $GITHUB_STEP_SUMMARY
             tail -n 120 gradle-build.log >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
+            
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git checkout -B ci-build-log
+            cp gradle-build.log build-failure.log 2>/dev/null || true
+            git add build-failure.log
+            git commit -m "ci: upload build failure log [skip ci]" || true
+            git push -f origin ci-build-log || true
+
             exit 1
           fi
           echo "Found APK at: $APK_PATH"

@@ -80,6 +80,7 @@ class QwentonTerminalBridge private constructor(private val appContext: Context)
                 workingDir,
                 arrayOf("-l"),
                 env,
+                2000,
                 this
             )
             appendTranscript("==> Qwenton Terminal PTY session created.\n")
@@ -133,7 +134,8 @@ class QwentonTerminalBridge private constructor(private val appContext: Context)
         val cleanCmd = command.trim() + "\n"
         terminalSession?.let { session ->
             try {
-                session.write(cleanCmd)
+                val bytes = cleanCmd.toByteArray(Charsets.UTF_8)
+                session.write(bytes, 0, bytes.size)
                 return
             } catch (t: Throwable) {
                 Log.w(TAG, "Failed writing to TerminalSession, falling back to native shell", t)
@@ -275,7 +277,7 @@ class QwentonTerminalBridge private constructor(private val appContext: Context)
 
     override fun onTerminalCursorStateChange(state: Boolean) {}
 
-    override fun getTerminalCursorStyle(): Int = 0
+    override fun getTerminalCursorStyle(): java.lang.Integer? = 0
 
     override fun logError(tag: String, message: String) {
         Log.e(tag, message)
@@ -291,6 +293,18 @@ class QwentonTerminalBridge private constructor(private val appContext: Context)
 
     override fun logDebug(tag: String, message: String) {
         Log.d(tag, message)
+    }
+
+    override fun logVerbose(tag: String, message: String) {
+        Log.v(tag, message)
+    }
+
+    override fun logStackTraceWithMessage(tag: String, message: String, e: java.lang.Exception) {
+        Log.e(tag, message, e)
+    }
+
+    override fun logStackTrace(tag: String, e: java.lang.Exception) {
+        Log.e(tag, e.message ?: "Terminal exception", e)
     }
 
     companion object {

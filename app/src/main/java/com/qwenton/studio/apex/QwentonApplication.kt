@@ -14,27 +14,37 @@ class QwentonApplication : Application() {
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    lateinit var terminalBridge: QwentonTerminalBridge
-        private set
+    @Volatile
+    private var _terminalBridge: QwentonTerminalBridge? = null
+    val terminalBridge: QwentonTerminalBridge
+        get() = _terminalBridge ?: synchronized(this) {
+            _terminalBridge ?: QwentonTerminalBridge.getInstance(this).also { _terminalBridge = it }
+        }
 
-    lateinit var modelCatalogRepository: ModelCatalogRepository
-        private set
+    @Volatile
+    private var _modelCatalogRepository: ModelCatalogRepository? = null
+    val modelCatalogRepository: ModelCatalogRepository
+        get() = _modelCatalogRepository ?: synchronized(this) {
+            _modelCatalogRepository ?: ModelCatalogRepository(this).also { _modelCatalogRepository = it }
+        }
 
-    lateinit var apiKeyManager: ApiKeyManager
-        private set
+    @Volatile
+    private var _apiKeyManager: ApiKeyManager? = null
+    val apiKeyManager: ApiKeyManager
+        get() = _apiKeyManager ?: synchronized(this) {
+            _apiKeyManager ?: ApiKeyManager(this).also { _apiKeyManager = it }
+        }
 
     override fun onCreate() {
         super.onCreate()
 
         try {
-            apiKeyManager = ApiKeyManager(this)
             apiKeyManager.getOrCreateApiKey()
         } catch (t: Throwable) {
             Log.e(TAG, "Failed initializing ApiKeyManager safely", t)
         }
 
         try {
-            modelCatalogRepository = ModelCatalogRepository(this)
             applicationScope.launch {
                 try {
                     modelCatalogRepository.refreshCatalog()
@@ -47,7 +57,7 @@ class QwentonApplication : Application() {
         }
 
         try {
-            terminalBridge = QwentonTerminalBridge.getInstance(this)
+            terminalBridge.initializeSession()
         } catch (t: Throwable) {
             Log.e(TAG, "Failed initializing QwentonTerminalBridge safely", t)
         }

@@ -65,6 +65,8 @@ import com.qwenton.studio.apex.ui.theme.StatusGreen
 import com.qwenton.studio.apex.ui.theme.StatusRed
 import com.qwenton.studio.apex.ui.theme.WarmCream
 import com.termux.view.TerminalView
+import com.termux.view.TerminalViewClient
+import com.termux.terminal.TerminalSession
 
 @Composable
 fun CollapsibleTerminalDrawer(
@@ -249,6 +251,7 @@ fun CollapsibleTerminalDrawer(
                             factory = { ctx ->
                                 try {
                                     TerminalView(ctx, null).apply {
+                                        setTerminalViewClient(ApexTerminalViewClient())
                                         setTextSize(26)
                                         attachSession(session)
                                     }
@@ -288,4 +291,30 @@ fun CollapsibleTerminalDrawer(
             }
         }
     }
+}
+
+private class ApexTerminalViewClient : TerminalViewClient {
+    override fun onScale(scale: Float): Float = scale
+    override fun onSingleTapUp(e: android.view.MotionEvent) {}
+    override fun shouldBackButtonBeMappedToEscape(): Boolean = false
+    override fun shouldEnforceCharBasedInput(): Boolean = false
+    override fun shouldUseCtrlSpaceWorkaround(): Boolean = false
+    override fun isTerminalViewSelected(): Boolean = true
+    override fun copyModeChanged(copyMode: Boolean) {}
+    override fun onKeyDown(keyCode: Int, e: android.view.KeyEvent, session: TerminalSession): Boolean = false
+    override fun onKeyUp(keyCode: Int, e: android.view.KeyEvent): Boolean = false
+    override fun onLongPress(event: android.view.MotionEvent): Boolean = false
+    override fun readControlKey(): Boolean = false
+    override fun readAltKey(): Boolean = false
+    override fun readShiftKey(): Boolean = false
+    override fun readFnKey(): Boolean = false
+    override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession): Boolean = false
+    override fun onEmulatorSet() {}
+    override fun logError(tag: String, message: String) { android.util.Log.e(tag, message) }
+    override fun logWarn(tag: String, message: String) { android.util.Log.w(tag, message) }
+    override fun logInfo(tag: String, message: String) { android.util.Log.i(tag, message) }
+    override fun logDebug(tag: String, message: String) { android.util.Log.d(tag, message) }
+    override fun logVerbose(tag: String, message: String) { android.util.Log.v(tag, message) }
+    override fun logStackTraceWithMessage(tag: String, message: String, e: java.lang.Exception) { android.util.Log.e(tag, message, e) }
+    override fun logStackTrace(tag: String, e: java.lang.Exception) { android.util.Log.e(tag, e.message ?: "", e) }
 }

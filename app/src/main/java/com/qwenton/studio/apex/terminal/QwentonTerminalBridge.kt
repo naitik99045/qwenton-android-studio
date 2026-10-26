@@ -277,7 +277,7 @@ class QwentonTerminalBridge private constructor(private val appContext: Context)
 
     override fun onTerminalCursorStateChange(state: Boolean) {}
 
-    override fun getTerminalCursorStyle(): java.lang.Integer? = 0
+    override fun getTerminalCursorStyle(): Int? = null
 
     override fun logError(tag: String, message: String) {
         Log.e(tag, message)

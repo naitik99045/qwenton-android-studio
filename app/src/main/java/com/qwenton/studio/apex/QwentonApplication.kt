@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import java.io.File
 
 class QwentonApplication : Application() {
 
@@ -38,12 +39,25 @@ class QwentonApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        // 1. CrashGuard: Defensively log and persist any uncaught thread exceptions
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            Log.e(TAG, "CrashGuard intercepted unhandled exception on [${thread.name}]: ${throwable.message}", throwable)
+            try {
+                val crashFile = File(filesDir, "last_crash.log")
+                crashFile.writeText("Thread: ${thread.name}\nError: ${throwable.message}\nStacktrace:\n${throwable.stackTraceToString()}")
+            } catch (_: Throwable) {}
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
+
+        // 2. Safe ApiKey initialization
         try {
             apiKeyManager.getOrCreateApiKey()
         } catch (t: Throwable) {
             Log.e(TAG, "Failed initializing ApiKeyManager safely", t)
         }
 
+        // 3. Safe Catalog initialization
         try {
             applicationScope.launch {
                 try {
@@ -56,6 +70,7 @@ class QwentonApplication : Application() {
             Log.e(TAG, "Failed initializing ModelCatalogRepository safely", t)
         }
 
+        // 4. Safe Terminal Bridge initialization
         try {
             terminalBridge.initializeSession()
         } catch (t: Throwable) {

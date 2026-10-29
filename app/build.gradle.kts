@@ -18,7 +18,7 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
-            abiFilters += listOf("arm64-v8a")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
         }
     }
 
@@ -82,9 +82,6 @@ dependencies {
     implementation(libs.retrofit.kotlinx.serialization)
 
     implementation(libs.androidx.security.crypto)
-
-    implementation(libs.termux.terminal.emulator)
-    implementation(libs.termux.terminal.view)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

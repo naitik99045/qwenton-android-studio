@@ -11,31 +11,38 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,14 +51,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.qwenton.studio.apex.data.model.ServerStatus
 import com.qwenton.studio.apex.terminal.QwentonTerminalBridge
 import com.qwenton.studio.apex.ui.theme.CyanAccent
@@ -64,9 +72,6 @@ import com.qwenton.studio.apex.ui.theme.SoftPink
 import com.qwenton.studio.apex.ui.theme.StatusGreen
 import com.qwenton.studio.apex.ui.theme.StatusRed
 import com.qwenton.studio.apex.ui.theme.WarmCream
-import com.termux.view.TerminalView
-import com.termux.view.TerminalViewClient
-import com.termux.terminal.TerminalSession
 
 @Composable
 fun CollapsibleTerminalDrawer(
@@ -83,6 +88,16 @@ fun CollapsibleTerminalDrawer(
     val tokenSpeed by bridge.tokenSpeed.collectAsState()
     val transcript by bridge.transcript.collectAsState()
     val context = LocalContext.current
+
+    val scrollState = rememberScrollState()
+    var inputCommand by remember { mutableStateOf("") }
+
+    // Auto-scroll to bottom as new log chunks stream in
+    LaunchedEffect(transcript) {
+        if (transcript.isNotEmpty()) {
+            scrollState.animateScrollTo(scrollState.maxValue)
+        }
+    }
 
     val statusDotColor = when (serverStatus) {
         ServerStatus.RUNNING -> StatusGreen
@@ -118,7 +133,7 @@ fun CollapsibleTerminalDrawer(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                // Status dot
+                // Status indicator dot
                 Box(
                     modifier = Modifier
                         .size(10.dp)
@@ -141,7 +156,7 @@ fun CollapsibleTerminalDrawer(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Token Speed Badge if active
+            // Token Speed Badge if server is actively serving
             if (serverStatus == ServerStatus.RUNNING && tokenSpeed > 0f) {
                 Text(
                     text = "⚡ ${String.format("%.1f", tokenSpeed)} t/s",
@@ -170,7 +185,7 @@ fun CollapsibleTerminalDrawer(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(340.dp)
+                    .height(350.dp)
                     .background(ObsidianSlate)
             ) {
                 // Terminal Action Toolbar
@@ -178,19 +193,19 @@ fun CollapsibleTerminalDrawer(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(DarkCyanSurfaceSolid)
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "EMBEDDED PTY CONSOLE",
-                        color = MutedSlate,
+                        text = "NATIVE SH CONSOLE",
+                        color = CyanAccent,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace
                     )
 
-                    Row {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         IconButton(
                             onClick = {
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
@@ -236,85 +251,115 @@ fun CollapsibleTerminalDrawer(
                     }
                 }
 
-                // Native Termux TerminalView or Safe Compose Fallback Stream
+                // Interactive Monospace Text Terminal Stream (Crash-Proof Jetpack Compose)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .padding(6.dp)
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
-                    var nativeViewFailed by remember { mutableStateOf(false) }
-                    val session = bridge.getTerminalSession()
-
-                    if (session != null && !nativeViewFailed) {
-                        AndroidView(
-                            factory = { ctx ->
-                                try {
-                                    TerminalView(ctx, null).apply {
-                                        setTerminalViewClient(ApexTerminalViewClient())
-                                        setTextSize(26)
-                                        attachSession(session)
-                                    }
-                                } catch (t: Throwable) {
-                                    android.util.Log.w("CollapsibleDrawer", "TerminalView instantiation fallback", t)
-                                    nativeViewFailed = true
-                                    android.widget.TextView(ctx).apply {
-                                        setTextColor(android.graphics.Color.WHITE)
-                                        text = transcript
-                                    }
-                                }
-                            },
-                            update = { termView ->
-                                try {
-                                    if (termView is TerminalView && termView.currentSession != session) {
-                                        termView.attachSession(session)
-                                    }
-                                } catch (t: Throwable) {
-                                    nativeViewFailed = true
-                                }
-                            },
-                            modifier = Modifier.matchParentSize()
-                        )
-                    } else {
-                        // Resilient scrollable Compose text console
+                    SelectionContainer {
                         Text(
-                            text = transcript.ifEmpty { "==> Qwenton Terminal Ready. No output yet.\n" },
+                            text = transcript.ifEmpty {
+                                "==> Qwenton Native Linux Terminal Ready.\n==> Shell: /system/bin/sh (POSIX anonymous pipe)\n==> Tap buttons or enter custom commands below.\n"
+                            },
                             color = WarmCream,
                             fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace,
+                            lineHeight = 15.sp,
                             modifier = Modifier
-                                .matchParentSize()
-                                .padding(8.dp)
+                                .fillMaxSize()
+                                .verticalScroll(scrollState)
+                        )
+                    }
+                }
+
+                // Quick Command Chips
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(DarkCyanSurfaceSolid)
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf("uname -a", "ps", "df -h", "ls -lh", "top -n 1").forEach { cmd ->
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(ObsidianSlate)
+                                .border(1.dp, CyanBorder, RoundedCornerShape(4.dp))
+                                .clickable { bridge.dispatchCommand(cmd) }
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = cmd,
+                                color = CyanAccent,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+
+                // Interactive Command Prompt Bar
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(DarkCyanSurfaceSolid)
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "$ ",
+                        color = CyanAccent,
+                        fontSize = 13.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    BasicTextField(
+                        value = inputCommand,
+                        onValueChange = { inputCommand = it },
+                        singleLine = true,
+                        cursorBrush = SolidColor(CyanAccent),
+                        textStyle = TextStyle(
+                            color = WarmCream,
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace
+                        ),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(
+                            onSend = {
+                                if (inputCommand.isNotBlank()) {
+                                    bridge.dispatchCommand(inputCommand)
+                                    inputCommand = ""
+                                }
+                            }
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 6.dp)
+                    )
+
+                    IconButton(
+                        onClick = {
+                            if (inputCommand.isNotBlank()) {
+                                bridge.dispatchCommand(inputCommand)
+                                inputCommand = ""
+                            }
+                        },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Run Command",
+                            tint = SoftPink,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
             }
         }
     }
-}
-
-private class ApexTerminalViewClient : TerminalViewClient {
-    override fun onScale(scale: Float): Float = scale
-    override fun onSingleTapUp(e: android.view.MotionEvent) {}
-    override fun shouldBackButtonBeMappedToEscape(): Boolean = false
-    override fun shouldEnforceCharBasedInput(): Boolean = false
-    override fun shouldUseCtrlSpaceWorkaround(): Boolean = false
-    override fun isTerminalViewSelected(): Boolean = true
-    override fun copyModeChanged(copyMode: Boolean) {}
-    override fun onKeyDown(keyCode: Int, e: android.view.KeyEvent, session: TerminalSession): Boolean = false
-    override fun onKeyUp(keyCode: Int, e: android.view.KeyEvent): Boolean = false
-    override fun onLongPress(event: android.view.MotionEvent): Boolean = false
-    override fun readControlKey(): Boolean = false
-    override fun readAltKey(): Boolean = false
-    override fun readShiftKey(): Boolean = false
-    override fun readFnKey(): Boolean = false
-    override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession): Boolean = false
-    override fun onEmulatorSet() {}
-    override fun logError(tag: String, message: String) { android.util.Log.e(tag, message) }
-    override fun logWarn(tag: String, message: String) { android.util.Log.w(tag, message) }
-    override fun logInfo(tag: String, message: String) { android.util.Log.i(tag, message) }
-    override fun logDebug(tag: String, message: String) { android.util.Log.d(tag, message) }
-    override fun logVerbose(tag: String, message: String) { android.util.Log.v(tag, message) }
-    override fun logStackTraceWithMessage(tag: String, message: String, e: java.lang.Exception) { android.util.Log.e(tag, message, e) }
-    override fun logStackTrace(tag: String, e: java.lang.Exception) { android.util.Log.e(tag, e.message ?: "", e) }
 }

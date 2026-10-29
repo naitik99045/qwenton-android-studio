@@ -11,8 +11,6 @@ kotlinxSerialization = "1.7.3"
 okhttp = "4.12.0"
 retrofit = "2.11.0"
 securityCrypto = "1.1.0-alpha06"
-termuxTerminalEmulator = "v0.118.0"
-termuxTerminalView = "v0.118.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -37,9 +35,6 @@ okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhtt
 okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
 retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
 retrofit-kotlinx-serialization = { group = "com.squareup.retrofit2", name = "converter-kotlinx-serialization", version.ref = "retrofit" }
-
-termux-terminal-emulator = { group = "com.github.termux.termux-app", name = "terminal-emulator", version.ref = "termuxTerminalEmulator" }
-termux-terminal-view = { group = "com.github.termux.termux-app", name = "terminal-view", version.ref = "termuxTerminalView" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -14,9 +14,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -79,8 +83,46 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
+            var hasRenderError by remember { mutableStateOf(false) }
+            var errorMessage by remember { mutableStateOf("") }
+
             QwentonStudioTheme {
-                MainStudioShell(app = app)
+                if (hasRenderError) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(ObsidianSlate)
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = "Qwenton Studio Apex Recovery",
+                                color = SoftPink,
+                                fontSize = 18.sp,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = errorMessage.ifEmpty { "A render issue occurred. Tap below to reload." },
+                                color = WarmCream,
+                                fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            androidx.compose.material3.Button(
+                                onClick = { hasRenderError = false },
+                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = CyanAccent)
+                            ) {
+                                Text("Reload Studio", color = ObsidianSlate, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                            }
+                        }
+                    }
+                } else {
+                    MainStudioShell(app = app)
+                }
             }
         }
     }

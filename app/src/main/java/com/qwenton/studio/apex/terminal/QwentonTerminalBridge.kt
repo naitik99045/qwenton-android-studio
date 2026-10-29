@@ -3,8 +3,6 @@ package com.qwenton.studio.apex.terminal
 import android.content.Context
 import android.util.Log
 import com.qwenton.studio.apex.data.model.ServerStatus
-import com.termux.terminal.TerminalSession
-import com.termux.terminal.TerminalSessionClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -12,16 +10,24 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.io.BufferedReader
+import java.io.BufferedWriter
 import java.io.File
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
 import java.util.regex.Pattern
 
-class QwentonTerminalBridge private constructor(private val appContext: Context) : TerminalSessionClient {
+/**
+ * High-performance, crash-proof native Linux shell execution bridge for Qwenton Studio Apex.
+ * Communicates directly with the Android device's `/system/bin/sh` shell process via standard UNIX
+ * anonymous pipes, completely eliminating fragile third-party PTY JNI linkage and SELinux devpts restrictions.
+ */
+class QwentonTerminalBridge private constructor(private val appContext: Context) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    private var terminalSession: TerminalSession? = null
     private var nativeProcess: Process? = null
-    private var nativeProcessWriter: java.io.BufferedWriter? = null
+    private var nativeProcessWriter: BufferedWriter? = null
 
     // Reactive Compose States
     private val _transcript = MutableStateFlow("")
@@ -58,61 +64,49 @@ class QwentonTerminalBridge private constructor(private val appContext: Context)
     }
 
     /**
-     * Initializes the underlying Termux TerminalSession or transparently falls back to native Linux shell process.
+     * Initializes the resilient native Android Linux `/system/bin/sh` process.
      */
     fun initializeSession() {
-        try {
-            val workingDir = appContext.filesDir.absolutePath
-            val logsDir = File(appContext.filesDir, "logs")
-            if (!logsDir.exists()) logsDir.mkdirs()
-
-            val nativeLibDir = appContext.applicationInfo.nativeLibraryDir
-            val shell = "/system/bin/sh"
-            val env = arrayOf(
-                "HOME=$workingDir",
-                "TMPDIR=${logsDir.absolutePath}",
-                "PATH=/system/bin:/system/xbin:$nativeLibDir",
-                "LD_LIBRARY_PATH=$nativeLibDir"
-            )
-
-            terminalSession = TerminalSession(
-                shell,
-                workingDir,
-                arrayOf("-l"),
-                env,
-                2000,
-                this
-            )
-            appendTranscript("==> Qwenton Terminal PTY session created.\n")
-        } catch (t: Throwable) {
-            // Safely catch UnsatisfiedLinkError, NoClassDefFoundError, or any runtime linkage failure
-            Log.w(TAG, "Termux PTY JNI not available on device (${t.message}), activating Native Linux Shell engine", t)
-            terminalSession = null
-            startNativeShellFallback()
-            appendTranscript("==> Native Android Linux shell engine activated.\n")
-        }
+        startNativeShellEngine()
     }
 
-    private fun startNativeShellFallback() {
+    private fun startNativeShellEngine() {
         scope.launch(Dispatchers.IO) {
             try {
+                if (nativeProcess?.isAlive == true) {
+                    return@launch
+                }
+
                 val workingDir = appContext.filesDir.absolutePath
+                val logsDir = File(appContext.filesDir, "logs")
+                if (!logsDir.exists()) logsDir.mkdirs()
+
+                val modelsDir = File(appContext.filesDir, "models")
+                if (!modelsDir.exists()) modelsDir.mkdirs()
+
+                val agentsDir = File(appContext.filesDir, "agents")
+                if (!agentsDir.exists()) agentsDir.mkdirs()
+
                 val nativeLibDir = appContext.applicationInfo.nativeLibraryDir
+
                 val pb = ProcessBuilder("/system/bin/sh")
                     .directory(File(workingDir))
                     .redirectErrorStream(true)
 
                 val env = pb.environment()
                 env["HOME"] = workingDir
-                env["TMPDIR"] = "$workingDir/logs"
+                env["TMPDIR"] = logsDir.absolutePath
                 env["PATH"] = "/system/bin:/system/xbin:$nativeLibDir"
                 env["LD_LIBRARY_PATH"] = nativeLibDir
 
                 val process = pb.start()
                 nativeProcess = process
-                nativeProcessWriter = process.outputStream.bufferedWriter()
+                nativeProcessWriter = BufferedWriter(OutputStreamWriter(process.outputStream, Charsets.UTF_8))
 
-                val reader = process.inputStream.bufferedReader()
+                appendTranscript("==> Qwenton Native Linux Shell Engine activated (/system/bin/sh).\n")
+                appendTranscript("==> Environment: Android ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT})\n\n")
+
+                val reader = BufferedReader(InputStreamReader(process.inputStream, Charsets.UTF_8))
                 var line: String?
                 while (reader.readLine().also { line = it } != null) {
                     line?.let { outputLine ->
@@ -120,39 +114,27 @@ class QwentonTerminalBridge private constructor(private val appContext: Context)
                     }
                 }
             } catch (t: Throwable) {
-                Log.e(TAG, "Error in native shell fallback", t)
+                Log.e(TAG, "Native shell engine exception: ${t.message}", t)
+                appendTranscript("==> Engine Error: ${t.localizedMessage}\n")
             }
         }
     }
 
-    fun getTerminalSession(): TerminalSession? = terminalSession
-
     /**
-     * Dispatches a deterministic shell command directly into the PTY session or native Linux shell process.
+     * Dispatches a deterministic shell command directly into the running shell process.
      */
     fun dispatchCommand(command: String) {
         val cleanCmd = command.trim() + "\n"
-        terminalSession?.let { session ->
-            try {
-                val bytes = cleanCmd.toByteArray(Charsets.UTF_8)
-                session.write(bytes, 0, bytes.size)
-                return
-            } catch (t: Throwable) {
-                Log.w(TAG, "Failed writing to TerminalSession, falling back to native shell", t)
-            }
-        }
-
-        // Native Linux shell fallback execution
         scope.launch(Dispatchers.IO) {
             try {
-                if (nativeProcessWriter == null || nativeProcess?.isAlive == false) {
-                    startNativeShellFallback()
+                if (nativeProcessWriter == null || nativeProcess?.isAlive != true) {
+                    startNativeShellEngine()
                 }
                 nativeProcessWriter?.write(cleanCmd)
                 nativeProcessWriter?.flush()
             } catch (t: Throwable) {
-                Log.e(TAG, "Failed writing to native shell fallback", t)
-                appendTranscript("==> Error executing command: ${t.localizedMessage}\n")
+                Log.e(TAG, "Failed writing command to shell process", t)
+                appendTranscript("==> Error dispatching command: ${t.localizedMessage}\n")
             }
         }
     }
@@ -161,7 +143,7 @@ class QwentonTerminalBridge private constructor(private val appContext: Context)
      * Appends content to the observable transcript and limits memory consumption.
      */
     private fun appendTranscript(text: String) {
-        scope.launch {
+        scope.launch(Dispatchers.Main) {
             val current = _transcript.value
             val maxLen = 50000
             val combined = current + text
@@ -182,7 +164,7 @@ class QwentonTerminalBridge private constructor(private val appContext: Context)
     }
 
     /**
-     * Called whenever stdout produces text in the Termux session.
+     * Called whenever stdout produces text in the shell session.
      */
     fun processOutputChunk(chunk: String) {
         appendTranscript(chunk)
@@ -242,69 +224,6 @@ class QwentonTerminalBridge private constructor(private val appContext: Context)
                 }
             }
         }
-    }
-
-    // TerminalSessionClient Implementation Callbacks
-    override fun onTextChanged(changedSession: TerminalSession) {
-        try {
-            val emulator = changedSession.emulator
-            if (emulator != null) {
-                val screen = emulator.screen
-                val transcriptText = changedSession.emulator.getScreen().transcriptText
-                if (transcriptText.isNotBlank()) {
-                    val lastLine = transcriptText.lines().lastOrNull { it.isNotBlank() } ?: ""
-                    processOutputChunk(lastLine)
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Error in onTextChanged", e)
-        }
-    }
-
-    override fun onTitleChanged(changedSession: TerminalSession) {}
-
-    override fun onSessionFinished(finishedSession: TerminalSession) {
-        _latestLogLine.value = "● Terminal Session Finished"
-    }
-
-    override fun onCopyTextToClipboard(session: TerminalSession, text: String) {}
-
-    override fun onPasteTextFromClipboard(session: TerminalSession?) {}
-
-    override fun onBell(session: TerminalSession) {}
-
-    override fun onColorsChanged(session: TerminalSession) {}
-
-    override fun onTerminalCursorStateChange(state: Boolean) {}
-
-    override fun getTerminalCursorStyle(): Int? = null
-
-    override fun logError(tag: String, message: String) {
-        Log.e(tag, message)
-    }
-
-    override fun logWarn(tag: String, message: String) {
-        Log.w(tag, message)
-    }
-
-    override fun logInfo(tag: String, message: String) {
-        Log.i(tag, message)
-    }
-
-    override fun logDebug(tag: String, message: String) {
-        Log.d(tag, message)
-    }
-
-    override fun logVerbose(tag: String, message: String) {
-        Log.v(tag, message)
-    }
-
-    override fun logStackTraceWithMessage(tag: String, message: String, e: java.lang.Exception) {
-        Log.e(tag, message, e)
-    }
-
-    override fun logStackTrace(tag: String, e: java.lang.Exception) {
-        Log.e(tag, e.message ?: "Terminal exception", e)
     }
 
     companion object {

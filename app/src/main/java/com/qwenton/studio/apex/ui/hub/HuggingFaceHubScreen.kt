@@ -215,15 +215,7 @@ fun HuggingFaceHubScreen(
             1 -> {
                 // HF Search Results
                 if (isSearching) {
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator(color = CyanAccent)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Querying Hugging Face...", color = MutedSlate, fontSize = 13.sp)
-                    }
+                    ModelSkeletonList()
                 } else if (searchResults.isEmpty()) {
                     Column(
                         modifier = Modifier.fillMaxSize(),
@@ -298,6 +290,63 @@ fun HuggingFaceHubScreen(
                     }
                     item {
                         Spacer(modifier = Modifier.height(80.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModelSkeletonList() {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        repeat(3) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(110.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(DarkCyanSurfaceSolid)
+                    .border(1.dp, CyanBorder.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                    .padding(14.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .width(180.dp)
+                            .height(16.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(ObsidianSlate.copy(alpha = 0.6f))
+                    )
+                    Box(
+                        modifier = Modifier
+                            .width(120.dp)
+                            .height(12.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(ObsidianSlate.copy(alpha = 0.4f))
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(70.dp)
+                                .height(20.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(CyanAccent.copy(alpha = 0.15f))
+                        )
+                        Box(
+                            modifier = Modifier
+                                .width(90.dp)
+                                .height(28.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(SoftPink.copy(alpha = 0.2f))
+                        )
                     }
                 }
             }
